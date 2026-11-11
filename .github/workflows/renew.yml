@@ -44,15 +44,36 @@ jobs:
             echo "send_mail=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Read Results
+      - name: Read and Format Results
         id: read_result
         run: |
-          if [ -f renewal_results.json ]; then
-            RESULT=$(tr -d '\n' < renewal_results.json)
-            echo "MAIL_BODY=$RESULT" >> $GITHUB_ENV
-          else
-            echo "MAIL_BODY=未找到详细报告，请点击链接查看日志。" >> $GITHUB_ENV
-          fi
+          python - <<'EOF'
+          import json, os
+          try:
+              with open('renewal_results.json', 'r', encoding='utf-8') as f:
+                  data = json.load(f)
+              lines = []
+              total = data.get('renewed_count', 0) + data.get('failed_count', 0)
+              lines.append(f"本次共检查 {total} 个域名：\n")
+              
+              if data.get('renewed_count', 0) > 0:
+                  lines.append("✅ 成功续期：")
+                  for domain in data.get('renewed_domains', []):
+                      lines.append(f"  - {domain}")
+                  lines.append("")
+                  
+              if data.get('failed_count', 0) > 0:
+                  lines.append("❌ 失败或跳过：")
+                  for item in data.get('failed_domains', []):
+                      item_cn = item.replace('Free renewal is available only when fewer than 120 days remain before expiration. You can renew earlier with c', '免费续期仅在剩余时间少于 120 天时提供。')
+                      lines.append(f"  - {item_cn}")
+              body = "\n".join(lines)
+          except Exception:
+              body = "未能解析详细报告，请点击下方链接查看日志。"
+          
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env:
+              env.write(f"MAIL_BODY<<EOF\n{body}\nEOF\n")
+          EOF
 
       - name: Send Email Notification
         uses: dawidd6/action-send-mail@v3
@@ -69,7 +90,8 @@ jobs:
           body: |
             续期工作流已完成，当前状态：${{ job.status }}
             
-            以下是详细执行结果：
+            ==============================
             ${{ env.MAIL_BODY }}
+            ==============================
             
-            查看详细日志（点击下方链接）：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            查看详细原始日志：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
