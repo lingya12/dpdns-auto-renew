@@ -56,23 +56,35 @@ jobs:
               total = data.get('renewed_count', 0) + data.get('failed_count', 0)
               lines.append(f"本次共检查 {total} 个域名：\n")
               
+              # 处理成功的域名
               if data.get('renewed_count', 0) > 0:
-                  lines.append("✅ 成功续期：")
+                  lines.append("✅ 续期成功：")
                   for domain in data.get('renewed_domains', []):
                       lines.append(f"  - {domain}")
                   lines.append("")
                   
+              # 处理未成功或跳过的域名
               if data.get('failed_count', 0) > 0:
-                  lines.append("❌ 失败或跳过：")
+                  lines.append("⏳ 检查结果（未执行续期）：")
                   for item in data.get('failed_domains', []):
-                      item_cn = item.replace('Free renewal is available only when fewer than 120 days remain before expiration. You can renew earlier with c', '免费续期仅在剩余时间少于 120 天时提供。')
-                      lines.append(f"  - {item_cn}")
+                      # 提取域名名称 (原版格式通常是 "域名 (续期失败: {...})")
+                      domain_name = item.split(' ')[0]
+                      
+                      if "fewer than 120 days" in item or "120 天" in item:
+                          lines.append(f"  - {domain_name}")
+                          lines.append(f"    ★ 状态：正常跳过。原因：距到期时间大于 120 天，官方暂不允许免费续期。")
+                      else:
+                          # 清洗掉丑陋的 JSON 符号，并翻译常见错误
+                          error_msg = item.replace('{"error":"', '').replace('"}', '').replace('"}))', '')
+                          error_msg = error_msg.replace('Free renewal is available only when fewer than 120 days remain before expiration. You can renew earlier with c', '')
+                          lines.append(f"  - {domain_name}")
+                          lines.append(f"    ★ 状态：❌ 发生错误。原因：{error_msg.strip()}")
               body = "\n".join(lines)
           except Exception:
               body = "未能解析详细报告，请点击下方链接查看日志。"
           
-          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env:
-              env.write(f"MAIL_BODY<<EOF\n{body}\nEOF\n")
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as f:
+              f.write(f"MAIL_BODY<<EOF\n{body}\nEOF\n")
           EOF
 
       - name: Send Email Notification
