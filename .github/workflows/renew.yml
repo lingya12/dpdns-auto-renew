@@ -58,6 +58,19 @@ jobs:
             echo "send_mail=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: 读取详细结果
+        id: read_result
+        run: |
+          if [ -f renewal_results.json ]; then
+            echo "MAIL_BODY<<EOF" >> $GITHUB_ENV
+            cat renewal_results.json >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
+          else
+            echo "MAIL_BODY<<EOF" >> $GITHUB_ENV
+            echo "未找到详细日志文件，请点击下方链接查看。" >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
+          fi
+
       - name: Send Email Notification
         uses: dawidd6/action-send-mail@v3
         if: steps.check_month.outputs.send_mail == 'true'
@@ -72,4 +85,8 @@ jobs:
           from: GitHub Actions
           body: |
             续期工作流已完成，当前状态：${{ job.status }}
-            查看详情：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            以下是具体执行结果：
+            ${{ env.MAIL_BODY }}
+            
+            查看详情（可选）：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}     
