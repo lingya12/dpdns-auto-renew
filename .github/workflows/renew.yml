@@ -49,43 +49,59 @@ jobs:
         run: |
           python - <<'EOF'
           import json, os
+          import urllib.request
+          
+          body_lines = []
+          
+          # 1. 查询 2captcha 余额（静默查询，不足才报警）
+          api_key = os.environ.get('CAPTCHA_API_KEY')
+          try:
+              url = f"https://2captcha.com/res.php?key={api_key}&action=getbalance&json=1"
+              req = urllib.request.urlopen(url, timeout=10)
+              res_data = json.loads(req.read().decode('utf-8'))
+              if res_data.get("status") == 1:
+                  balance = float(res_data.get("request", 0))
+                  # 预警线设为 0.5 美元（约够跑 300 次）
+                  if balance < 0.5:
+                      body_lines.append(f"⚠️ 【注意】2captcha 余额不足（仅剩 ${balance:.3f}），即将耗尽，请尽快充值！")
+                      body_lines.append("==============================\n")
+          except Exception:
+              pass # 如果查询接口出错，不影响正常发信
+          
+          # 2. 解析续期结果
           try:
               with open('renewal_results.json', 'r', encoding='utf-8') as f:
                   data = json.load(f)
-              lines = []
               total = data.get('renewed_count', 0) + data.get('failed_count', 0)
-              lines.append(f"本次共检查 {total} 个域名：\n")
+              body_lines.append(f"本次共检查 {total} 个域名：\n")
               
-              # 处理成功的域名
               if data.get('renewed_count', 0) > 0:
-                  lines.append("✅ 续期成功：")
+                  body_lines.append("✅ 续期成功：")
                   for domain in data.get('renewed_domains', []):
-                      lines.append(f"  - {domain}")
-                  lines.append("")
+                      body_lines.append(f"  - {domain}")
+                  body_lines.append("")
                   
-              # 处理未成功或跳过的域名
               if data.get('failed_count', 0) > 0:
-                  lines.append("⏳ 检查结果（未执行续期）：")
+                  body_lines.append("⏳ 检查结果（未执行续期）：")
                   for item in data.get('failed_domains', []):
-                      # 提取域名名称 (原版格式通常是 "域名 (续期失败: {...})")
                       domain_name = item.split(' ')[0]
-                      
                       if "fewer than 120 days" in item or "120 天" in item:
-                          lines.append(f"  - {domain_name}")
-                          lines.append(f"    ★ 状态：正常跳过。原因：距到期时间大于 120 天，官方暂不允许免费续期。")
+                          body_lines.append(f"  - {domain_name}")
+                          body_lines.append(f"    ★ 状态：正常跳过。原因：距到期时间大于 120 天，官方暂不允许免费续期。")
                       else:
-                          # 清洗掉丑陋的 JSON 符号，并翻译常见错误
                           error_msg = item.replace('{"error":"', '').replace('"}', '').replace('"}))', '')
                           error_msg = error_msg.replace('Free renewal is available only when fewer than 120 days remain before expiration. You can renew earlier with c', '')
-                          lines.append(f"  - {domain_name}")
-                          lines.append(f"    ★ 状态：❌ 发生错误。原因：{error_msg.strip()}")
-              body = "\n".join(lines)
+                          body_lines.append(f"  - {domain_name}")
+                          body_lines.append(f"    ★ 状态：❌ 发生错误。原因：{error_msg.strip()}")
           except Exception:
-              body = "未能解析详细报告，请点击下方链接查看日志。"
-          
+              body_lines.append("未能解析详细报告，请点击下方链接查看日志。")
+              
+          final_body = "\n".join(body_lines)
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as f:
-              f.write(f"MAIL_BODY<<EOF\n{body}\nEOF\n")
+              f.write(f"MAIL_BODY<<EOF\n{final_body}\nEOF\n")
           EOF
+        env:
+          CAPTCHA_API_KEY: ${{ secrets.CAPTCHA_API_KEY }}
 
       - name: Send Email Notification
         uses: dawidd6/action-send-mail@v3
