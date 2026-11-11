@@ -1,7 +1,7 @@
 name: Domain Renewal
 on:
   schedule:
-    - cron: '15 1 15 * *'  # 每月15日 北京时间9:15 (UTC 1:15) 运行一次
+    - cron: '0 15 1 * *'  # 每月15日 北京时间9:15 (UTC 1:15) 运行一次
   workflow_dispatch:  # 允许手动触发
 jobs:
   renew:
@@ -48,3 +48,28 @@ jobs:
           BARK_KEY: ${{ secrets.BARK_KEY }}
           BARK_SERVER: ${{ secrets.BARK_SERVER }}
           CAPTCHA_API_KEY: ${{ secrets.CAPTCHA_API_KEY }}
+      - name: 检查是否需要发邮件
+        id: check_month
+        run: |
+          MONTH=$(date +%m)
+          if [ $((MONTH % 2)) -eq 0 ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "send_mail=true" >> $GITHUB_OUTPUT
+          else
+            echo "send_mail=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Email Notification
+        uses: dawidd6/action-send-mail@v3
+        if: steps.check_month.outputs.send_mail == 'true'
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: DPDNS 自动续期结果 - ${{ job.status }}
+          to: ${{ secrets.TO_EMAIL }}
+          from: GitHub Actions
+          body: |
+            续期工作流已完成，当前状态：${{ job.status }}
+            查看详情：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
