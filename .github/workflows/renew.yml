@@ -16,26 +16,14 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update --fix-missing
-          sudo apt-get install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2
-
       - name: Install Python dependencies
         run: |
           pip install -r requirements.txt
-
-      - name: Install Google Chrome
+          
+      - name: Install Playwright and dependencies
         run: |
-          wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-          sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
-          sudo apt-get update --fix-missing
-          sudo apt-get install -y google-chrome-stable
-
-      - name: Verify Playwright installation
-        run: |
-          python -m playwright --version
-          python -c "from playwright.sync_api import sync_playwright; p = sync_playwright().start(); b = p.chromium.launch(channel='chrome'); b.close(); p.stop()"
+          python -m playwright install --with-deps chromium
+          python -m playwright install chrome
 
       - name: Run renew script
         run: python renew.py
